@@ -110,8 +110,7 @@
   </div>
 </div>
 
-<script src="qr.js"></script>
-<script src="card.js"></script>
+<script src="readycard.js"></script>
 <script>
 (function () {
   'use strict';
@@ -339,7 +338,11 @@
     var qr = QR.encodeSegments(plan.chosen.segments,
       { ecc: plan.preset.ecc, version: plan.chosen.version });
 
-    els.qrbox.innerHTML = QR.toSvg(qr, { quiet: 4, dark: '#000000', light: '#ffffff' });
+    /* The child's name is printed under the code. Two codes for two children
+       look identical otherwise, which matters the moment you print more than one. */
+    els.qrbox.innerHTML = QR.toSvg(qr, {
+      quiet: 4, dark: '#000000', light: '#ffffff', label: childName(current)
+    });
 
     var size = Card.describeSize(qr.version);
     els.stats.innerHTML =
