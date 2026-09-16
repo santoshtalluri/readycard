@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ReadyCard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===================== HOME: the list of children ===================== -->
+<div class="wrap" id="homeView">
+  <header>
+    <h1>ReadyCard</h1>
+    <p>Everything stays on this phone. Nothing is sent anywhere.</p>
+  </header>
+
+  <div id="childList"></div>
+
+  <button type="button" class="primary big" id="addChild">Add a child</button>
+
+  <details class="panel" style="margin-top:22px">
+    <summary>Settings</summary>
+    <div class="field" style="margin-top:14px">
+      <label for="baseUrl">Where scanned codes will point</label>
+      <input type="text" id="baseUrl">
+      <p class="hint">A longer address leaves less room for the card.</p>
+    </div>
+    <div class="btnrow">
+      <button type="button" data-url="https://readycard.app/v">readycard.app/v</button>
+      <button type="button" id="useHere">this page's own address</button>
+    </div>
+  </details>
+</div>
+
+<!-- ===================== EDIT: one child's card ===================== -->
+<div class="wrap" id="editView" hidden>
+  <header>
+    <button type="button" class="back" id="backHome">&larr; All children</button>
+    <h1 id="editTitle">New child</h1>
+    <p>Saved on this phone as you type.</p>
+  </header>
+
+  <div class="panel">
+    <h2>Travels in the QR code</h2>
+    <p class="sub">Anyone who scans this code can read every one of these fields.</p>
+    <div id="qrFields"></div>
+  </div>
+
+  <div class="panel locked">
+    <h2>Stays on this phone <span class="lock">never encoded</span></h2>
+    <p class="sub">Type as much as you like here — it cannot go in a QR code, so it never moves the meter.</p>
+    <div id="phoneFields"></div>
+  </div>
+
+  <div class="panel">
+    <h2>The code</h2>
+    <div class="field">
+      <label for="preset">How will this code be used?</label>
+      <select id="preset">
+        <option value="sticker">Sticker on a helmet or bottle</option>
+        <option value="card" selected>Wallet card, screen or paper</option>
+        <option value="max">Absolute maximum</option>
+      </select>
+      <p class="hint" id="presetNote"></p>
+    </div>
+    <div class="field">
+      <label for="expiry">Expires on <span class="count">blank means never</span></label>
+      <input type="date" id="expiry">
+    </div>
+  </div>
+
+  <div class="panel" id="resultPanel" hidden>
+    <h2>Ready to share</h2>
+    <div id="notice"></div>
+    <div class="qrbox" id="qrbox"></div>
+    <div class="stat" id="stats"></div>
+    <div class="btnrow" style="margin-top:12px">
+      <a id="openView" target="_blank"><button type="button">Open what a scanner sees</button></a>
+      <button type="button" id="downloadSvg">Download SVG</button>
+      <button type="button" id="printQr">Print</button>
+    </div>
+    <div class="url" id="urlOut"></div>
+  </div>
+
+  <details class="panel">
+    <summary>Prototype tools</summary>
+    <p class="sub" style="margin-top:12px">For measuring, not for parents.</p>
+    <div class="btnrow">
+      <button type="button" id="fillTypical">Fill a typical card</button>
+      <button type="button" id="fillWorst">Fill the worst case</button>
+    </div>
+  </details>
+
+  <button type="button" class="danger big" id="deleteChild">Delete this child</button>
+</div>
+
+<!-- ===================== The capacity meter ===================== -->
+<div class="meter" id="meter" hidden>
+  <div class="inner">
+    <div class="top">
+      <span class="headline" id="meterHead">Empty card</span>
+      <span class="figure" id="meterFig"></span>
+    </div>
+    <div class="bar" id="bar"><span></span></div>
+    <div class="detail" id="meterDetail">Start typing and the bar fills up.</div>
+    <div class="btnrow" style="margin-top:8px">
+      <button type="button" class="primary" id="generate" style="flex:1">Generate the QR code</button>
+    </div>
+  </div>
+</div>
+
+<script src="qr.js"></script>
+<script src="card.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var els = {};
+  var children = [];
+  var current = null;          /* the child being edited */
+  var encoded = null, plan = null;
+
+  /* ---------- Storage: this phone, and only this phone ---------- */
+  var STORE = 'readycard:children', SETTINGS = 'readycard:settings';
+
+  function load() {
+    try {
+      children = JSON.parse(localStorage.getItem(STORE) || '[]');
+      if (!Array.isArray(children)) children = [];
+    } catch (e) { children = []; }
+  }
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify(children)); }
+    catch (e) { /* private window, or storage full */ }
+  }
+  function loadSettings() {
+    try { return JSON.parse(localStorage.getItem(SETTINGS) || '{}'); }
+    catch (e) { return {}; }
+  }
+  function saveSettings(s) {
+    try { localStorage.setItem(SETTINGS, JSON.stringify(s)); } catch (e) {}
+  }
+
+  /* Works from a web address or from a file opened directly. */
+  function defaultBaseUrl() {
+    return location.href.split('#')[0].split('?')[0].replace(/[^/]*$/, '') + 'view.html';
+  }
+
+  function childName(c) {
+    var n = [c.values.first, c.values.last].filter(Boolean).join(' ').trim();
+    return n || 'Unnamed child';
+  }
+
+  /* ---------- Home ---------- */
+  function renderHome() {
+    els.childList.innerHTML = '';
+
+    if (!children.length) {
+      var empty = document.createElement('div');
+      empty.className = 'panel empty';
+      empty.innerHTML = '<p>No children yet.</p><p class="sub">Add one, fill in what matters, ' +
+        'and turn it into a QR code you can hand to a coach.</p>';
+      els.childList.appendChild(empty);
+      return;
+    }
+
+    children.forEach(function (c) {
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'childrow';
+      var allergy = (c.values.allergy || '').trim();
+      row.innerHTML = '<b>' + escapeHtml(childName(c)) + '</b>' +
+        '<span>' + (allergy ? escapeHtml(allergy.slice(0, 60)) : 'No allergies listed') + '</span>';
+      row.addEventListener('click', function () { openChild(c.id); });
+      els.childList.appendChild(row);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function showHome() {
+    current = null;
+    els.editView.hidden = true;
+    els.meter.hidden = true;
+    els.homeView.hidden = false;
+    document.body.classList.remove('editing');
+    renderHome();
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------- Edit ---------- */
+  function addChild() {
+    var c = { id: 'c' + Date.now(), values: {}, expiry: '', preset: 'card' };
+    children.push(c);
+    save();
+    openChild(c.id);
+  }
+
+  function openChild(id) {
+    current = children.filter(function (c) { return c.id === id; })[0];
+    if (!current) return showHome();
+
+    Card.FIELDS.forEach(function (f) {
+      els.inputs[f.id].value = current.values[f.id] || '';
+      updateCounter(f);
+    });
+    els.expiry.value = current.expiry || '';
+    els.preset.value = current.preset || 'card';
+    setPresetNote();
+
+    els.editTitle.textContent = childName(current);
+    els.resultPanel.hidden = true;
+    els.homeView.hidden = true;
+    els.editView.hidden = false;
+    els.meter.hidden = false;
+    document.body.classList.add('editing');
+    window.scrollTo(0, 0);
+    recompute();
+  }
+
+  function touch() {
+    if (!current) return;
+    Card.FIELDS.forEach(function (f) { current.values[f.id] = els.inputs[f.id].value; });
+    current.expiry = els.expiry.value;
+    current.preset = els.preset.value;
+    els.editTitle.textContent = childName(current);
+    save();
+    schedule();
+  }
+
+  /* ---------- Form ---------- */
+  function renderFields(container, fields) {
+    fields.forEach(function (f) {
+      var wrap = document.createElement('div');
+      wrap.className = 'field';
+
+      var label = document.createElement('label');
+      label.setAttribute('for', 'in_' + f.id);
+      label.textContent = f.label;
+      var counter = document.createElement('span');
+      counter.className = 'count';
+      counter.id = 'count_' + f.id;
+      label.appendChild(counter);
+      wrap.appendChild(label);
+
+      var input = document.createElement(f.multiline ? 'textarea' : 'input');
+      input.id = 'in_' + f.id;
+      input.maxLength = f.max;                      /* the hard stop */
+      if (!f.multiline) input.type = f.tel ? 'tel' : 'text';
+      if (f.hint) input.placeholder = f.hint;
+      input.addEventListener('input', function () { updateCounter(f); touch(); });
+      wrap.appendChild(input);
+
+      els.inputs[f.id] = input;
+      container.appendChild(wrap);
+    });
+  }
+
+  function updateCounter(f) {
+    var used = (els.inputs[f.id].value || '').length;
+    var c = document.getElementById('count_' + f.id);
+    c.textContent = used + ' / ' + f.max;
+    c.classList.toggle('full', used >= f.max);
+  }
+
+  /* ---------- The meter ---------- */
+  var timer = null;
+  function schedule() { clearTimeout(timer); timer = setTimeout(recompute, 120); }
+
+  async function recompute() {
+    if (!current) return;
+    var baseUrl = (els.baseUrl.value || '').trim() || defaultBaseUrl();
+    var presetName = els.preset.value;
+
+    encoded = await Card.encodeCard(current.values, current.expiry);
+    plan = Card.planCode(encoded, baseUrl, presetName);
+
+    var preset = plan.preset;
+    var budgetChars = Card.payloadBudget(baseUrl, presetName, plan.chosen.marker);
+    var usedChars = plan.chosen.payload.length;
+    var pct = budgetChars ? Math.min(100, usedChars / budgetChars * 100) : 100;
+
+    els.bar.classList.toggle('warn', pct > 80 && pct <= 100);
+    els.bar.classList.toggle('over', usedChars > budgetChars);
+    els.bar.firstElementChild.style.width = pct + '%';
+
+    var typed = Card.QR_FIELDS.reduce(function (n, f) {
+      return n + ((current.values[f.id] || '').trim().length);
+    }, 0);
+
+    els.meterFig.textContent = usedChars + ' of ' + budgetChars + ' characters';
+
+    if (typed === 0) {
+      els.meterHead.textContent = 'Empty card';
+      els.meterDetail.className = 'detail';
+      els.meterDetail.textContent = 'Start typing and the bar fills up.';
+    } else if (!plan.fitsAtAll) {
+      els.meterHead.textContent = 'Too long for any QR code';
+      els.meterDetail.className = 'detail bad';
+      els.meterDetail.textContent = 'This will not fit even at the largest size. Shorten the longest fields.';
+    } else if (!plan.fitsPreset) {
+      var ratio = typed > 0 ? usedChars / typed : 1;
+      els.meterHead.textContent = 'Too long for ' + preset.label.toLowerCase();
+      els.meterDetail.className = 'detail bad';
+      els.meterDetail.textContent = 'Trim about ' +
+        Math.max(1, Math.ceil((usedChars - budgetChars) / ratio)) +
+        ' characters, or choose a bigger code. Longest field: ' + longestField() + '.';
+    } else {
+      var size = plan.size;
+      els.meterHead.textContent = 'Fits — version ' + plan.chosen.version + ' code';
+      els.meterDetail.className = 'detail';
+      els.meterDetail.textContent = 'Prints clearly at about ' + size.inches +
+        (size.inches === 1 ? ' inch (' : ' inches (') + size.mm + ' mm) wide. ' +
+        typed + ' characters typed, ' + encoded.rawBytes + ' bytes packed down to ' +
+        encoded.packedBytes + '.';
+    }
+
+    els.generate.disabled = typed === 0 || !plan.fitsPreset;
+    if (!els.resultPanel.hidden) draw();
+  }
+
+  function longestField() {
+    var best = null, bestLen = -1;
+    Card.QR_FIELDS.forEach(function (f) {
+      var len = ((current.values[f.id] || '')).length;
+      if (len > bestLen) { bestLen = len; best = f; }
+    });
+    return best ? best.label.toLowerCase() + ' (' + bestLen + ')' : 'none';
+  }
+
+  /* ---------- Generate ---------- */
+  function draw() {
+    if (!plan || !plan.fitsAtAll) return;
+    var qr = QR.encodeSegments(plan.chosen.segments,
+      { ecc: plan.preset.ecc, version: plan.chosen.version });
+
+    els.qrbox.innerHTML = QR.toSvg(qr, { quiet: 4, dark: '#000000', light: '#ffffff' });
+
+    var size = Card.describeSize(qr.version);
+    els.stats.innerHTML =
+      '<div>version <b>' + qr.version + '</b> (' + size.modules + '&times;' + size.modules + ')</div>' +
+      '<div>correction <b>' + qr.ecc + '</b></div>' +
+      '<div>print at <b>' + size.inches + '"</b> or larger</div>' +
+      '<div>packed <b>' + encoded.packedBytes + '</b> bytes</div>' +
+      '<div>mode <b>' + plan.chosen.mode + '</b></div>';
+
+    els.urlOut.textContent = plan.chosen.url;
+    els.openView.href = 'view.html#' + plan.chosen.marker + plan.chosen.payload;
+
+    els.notice.innerHTML = '';
+    els.resultPanel.hidden = false;
+  }
+
+  /* ---------- Sample data, for measuring ---------- */
+  var TYPICAL = {
+    first: 'Maya', last: 'Ellison',
+    allergy: 'Peanuts — severe, carries an EpiPen',
+    meds: 'Albuterol inhaler — front pocket of the green bag',
+    cond: 'Asthma, worse when running in cold air',
+    c1name: 'Dana Ellison (mom)', c1phone: '555-0142',
+    c2name: 'Ray Ellison (dad)', c2phone: '555-0188',
+    kidnote: 'If I go quiet I am about to have an asthma attack. Please just hand me the inhaler.',
+    dob: '2014-03-11', insurer: 'Example Health', member: 'EX-4820-91773',
+    doctor: 'Dr. Ines Paz 555-0110', hospital: 'County General'
+  };
+
+  /* A worst case has to be realistic text. A repeating pattern compresses to
+     almost nothing and would say the limit is far away when it is not. */
+  var WORDS = ('amoxicillin penicillin sulfa latex shellfish cashew walnut sesame '
+    + 'wheat soy dairy pollen bee sting severe moderate mild anaphylaxis epinephrine '
+    + 'auto injector backpack front pocket zipped side nurse office cabinet refrigerated '
+    + 'twice daily morning evening with food seizure epilepsy diabetes insulin glucagon '
+    + 'pump juice box shaky dizzy confused unresponsive asthma inhaler spacer nebulizer '
+    + 'cold air running wheezing coughing migraine dark quiet room anxiety panic attack '
+    + 'headphones sensory overload nonverbal sign language hearing aid left ear right '
+    + 'glasses spare pair grandmother neighbour carpool coach practice tuesday thursday '
+    + 'guardian stepfather aunt uncle cousin emergency contact please call first').split(' ');
+
+  function realisticText(length, seed) {
+    var out = '', i = seed;
+    while (out.length < length) { out += (out ? ' ' : '') + WORDS[(i * 37 + seed * 11) % WORDS.length]; i++; }
+    return out.slice(0, length);
+  }
+
+  function fill(values) {
+    Card.FIELDS.forEach(function (f) {
+      els.inputs[f.id].value = values[f.id] || '';
+      updateCounter(f);
+    });
+    touch();
+  }
+
+  /* ---------- Wire up ---------- */
+  document.addEventListener('DOMContentLoaded', function () {
+    els.inputs = {};
+    ['homeView','editView','childList','addChild','backHome','editTitle','meter','bar',
+     'meterHead','meterFig','meterDetail','generate','resultPanel','qrbox','stats','urlOut',
+     'openView','notice','preset','presetNote','expiry','baseUrl','deleteChild']
+      .forEach(function (id) { els[id] = document.getElementById(id); });
+
+    renderFields(document.getElementById('qrFields'),
+      Card.FIELDS.filter(function (f) { return f.inQr; }));
+    renderFields(document.getElementById('phoneFields'),
+      Card.FIELDS.filter(function (f) { return !f.inQr; }));
+
+    var settings = loadSettings();
+    els.baseUrl.value = settings.baseUrl || defaultBaseUrl();
+
+    els.baseUrl.addEventListener('input', function () {
+      saveSettings({ baseUrl: els.baseUrl.value });
+      schedule();
+    });
+    document.querySelectorAll('button[data-url]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        els.baseUrl.value = b.dataset.url;
+        saveSettings({ baseUrl: els.baseUrl.value });
+        schedule();
+      });
+    });
+    document.getElementById('useHere').addEventListener('click', function () {
+      els.baseUrl.value = defaultBaseUrl();
+      saveSettings({ baseUrl: els.baseUrl.value });
+      schedule();
+    });
+
+    els.addChild.addEventListener('click', addChild);
+    els.backHome.addEventListener('click', showHome);
+    els.expiry.addEventListener('change', touch);
+    els.preset.addEventListener('change', function () { setPresetNote(); touch(); });
+    els.generate.addEventListener('click', draw);
+
+    els.deleteChild.addEventListener('click', function () {
+      if (!current) return;
+      if (!confirm('Delete ' + childName(current) + '? This cannot be undone.')) return;
+      children = children.filter(function (c) { return c.id !== current.id; });
+      save();
+      showHome();
+    });
+
+    document.getElementById('fillTypical').addEventListener('click', function () { fill(TYPICAL); });
+    document.getElementById('fillWorst').addEventListener('click', function () {
+      var v = {};
+      Card.FIELDS.forEach(function (f, i) {
+        v[f.id] = f.tel ? '+1-555-0100 x4821'.slice(0, f.max) : realisticText(f.max, i + 3);
+      });
+      fill(v);
+    });
+
+    document.getElementById('downloadSvg').addEventListener('click', function () {
+      var blob = new Blob([els.qrbox.innerHTML], { type: 'image/svg+xml' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'readycard-' + childName(current).replace(/\W+/g, '-').toLowerCase() + '.svg';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    });
+    document.getElementById('printQr').addEventListener('click', function () { window.print(); });
+
+    load();
+    showHome();
+  });
+
+  function setPresetNote() {
+    els.presetNote.textContent = Card.PRESETS[els.preset.value].note;
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html><meta charset="utf-8"><title>QR self test</title>
+<body style="font:14px ui-monospace,monospace;padding:20px"><pre id="out">running…</pre>
+<script src="qr.js"></script>
+<script>
+async function decode(qr) {
+  var scale = 4, quiet = 4, n = (qr.size + quiet * 2) * scale;
+  var cv = document.createElement('canvas');
+  cv.width = cv.height = n;
+  var ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, n, n);
+  ctx.fillStyle = '#000';
+  for (var r = 0; r < qr.size; r++) for (var c = 0; c < qr.size; c++)
+    if (qr.modules[r][c]) ctx.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+  var det = new BarcodeDetector({ formats: ['qr_code'] });
+  var found = await det.detect(cv);
+  return found.length ? found[0].rawValue : null;
+}
+(async function () {
+  var lines = [], pass = 0, fail = 0;
+  var tableProblems = QR.checkBlockTable();
+  lines.push(tableProblems.length ? 'TABLE FAIL: ' + tableProblems.length : 'capacity tables: OK (40 versions x 4 levels)');
+
+  var cases = [];
+  ['L','M','Q','H'].forEach(function (ecc) {
+    cases.push({ name: 'short byte ' + ecc, text: 'HELLO READYCARD', ecc: ecc });
+    cases.push({ name: 'url+base45 ' + ecc, prefix: 'https://readycard.app/v#A',
+                 payload: 'XC94Y5 $A0GH7%KLM2Z8', ecc: ecc });
+  });
+  var big = '';
+  for (var i = 0; i < 1200; i++) big += 'abcdefghij'[i % 10];
+  cases.push({ name: 'long byte 1200 L', text: big, ecc: 'L' });
+  var bigAl = '';
+  for (var i = 0; i < 1800; i++) bigAl += QR.ALNUM[i % 45];
+  cases.push({ name: 'long alnum 1800 L', prefix: 'https://readycard.app/v#A', payload: bigAl, ecc: 'L' });
+
+  for (var k = 0; k < cases.length; k++) {
+    var t = cases[k], qr, expect;
+    try {
+      if (t.text) { qr = QR.encodeSegments([QR.byteSegment(t.text)], { ecc: t.ecc }); expect = t.text; }
+      else { qr = QR.encodeUrl(t.prefix, t.payload, { ecc: t.ecc }); expect = t.prefix + t.payload; }
+      var got = await decode(qr);
+      var ok = got === expect;
+      ok ? pass++ : fail++;
+      lines.push((ok ? 'PASS' : 'FAIL') + '  v' + qr.version + qr.ecc + ' mask' + qr.mask +
+        '  ' + t.name + (ok ? '' : '\n   expected: ' + JSON.stringify(expect).slice(0,90) +
+        '\n   got:      ' + JSON.stringify(got).slice(0,90)));
+    } catch (e) { fail++; lines.push('ERROR ' + t.name + ': ' + e.message); }
+  }
+
+  /* Every version at level M, round-tripped. */
+  var vFail = [];
+  for (var v = 1; v <= 40; v++) {
+    var cap = QR.dataCapacityBytes(v, 'M');
+    var len = Math.max(1, cap - (v <= 9 ? 2 : 3));
+    var s = '';
+    for (var i = 0; i < len; i++) s += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[i % 36];
+    try {
+      var q = QR.encodeSegments([QR.byteSegment(s)], { ecc: 'M', version: v });
+      var d = await decode(q);
+      if (d !== s) vFail.push('v' + v + (d === null ? ' (no detect)' : ' (mismatch)'));
+    } catch (e) { vFail.push('v' + v + ' ' + e.message); }
+  }
+  lines.push(vFail.length ? 'versions 1-40 @M: FAIL ' + vFail.join(', ')
+                          : 'versions 1-40 @M at full capacity: all decode correctly');
+
+  lines.push('');
+  lines.push('summary: ' + pass + ' pass, ' + fail + ' fail' + (vFail.length ? ', ' + vFail.length + ' version failures' : ''));
+  document.getElementById('out').textContent = lines.join('\n');
+  window.__done = true;
+})();
+</script>

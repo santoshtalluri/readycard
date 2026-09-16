@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ReadyCard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap" id="root">
+  <p style="color:var(--muted)">Reading the code…</p>
+</div>
+
+<script src="card.js"></script>
+<script>
+(function () {
+  'use strict';
+  var root = document.getElementById('root');
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function block(title, value) {
+    if (!value) return '';
+    return '<div class="block"><h2>' + esc(title) + '</h2><p>' + esc(value) + '</p></div>';
+  }
+
+  function contact(label, name, phone) {
+    if (!name && !phone) return '';
+    var digits = (phone || '').replace(/[^0-9+]/g, '');
+    return '<a class="call" href="' + (digits ? 'tel:' + esc(digits) : '#') + '">' +
+      '<span>' + esc(label) + (name ? ' — ' + esc(name) : '') + '</span>' +
+      '<b>' + esc(phone || 'no number') + '</b></a>';
+  }
+
+  function daysLeft(iso) {
+    var end = Date.parse(iso + 'T23:59:59Z');
+    return Math.ceil((end - Date.now()) / 86400000);
+  }
+
+  function storageKey(fragment) { return 'readycard:' + fragment.slice(0, 40); }
+
+  function renderExpired(iso) {
+    root.innerHTML = '<div class="alert"><h2>Expired</h2>' +
+      '<p>This code expired on ' + esc(iso) + '.</p></div>' +
+      '<p style="color:var(--muted)">Ask the parent for a new one.</p>';
+  }
+
+  function render(card, fragment) {
+    var name = [card.first, card.last].filter(Boolean).join(' ') || 'Unnamed card';
+    var html = '<h1 class="card-name">' + esc(name) + '</h1>';
+
+    if (card.expiry) {
+      var left = daysLeft(card.expiry);
+      html += '<p style="margin:0 0 4px;color:var(--muted);font-size:13px">Good for ' +
+        left + ' more day' + (left === 1 ? '' : 's') + ' — until ' + esc(card.expiry) + '</p>';
+    } else {
+      html += '<p style="margin:0 0 4px;color:var(--muted);font-size:13px">No expiry date</p>';
+    }
+
+    if (card.allergy) {
+      html += '<div class="alert"><h2>Allergies</h2><p>' + esc(card.allergy) + '</p></div>';
+    }
+
+    html += block('Medications', card.meds);
+    html += block('Conditions', card.cond);
+
+    if (card.c1name || card.c1phone || card.c2name || card.c2phone) {
+      html += '<div class="block"><h2>Call</h2>' +
+        contact('Emergency contact 1', card.c1name, card.c1phone) +
+        contact('Emergency contact 2', card.c2name, card.c2phone) + '</div>';
+    }
+
+    if (card.kidnote) {
+      html += '<div class="block"><h2>In their own words</h2>' +
+        '<p class="quote">' + esc(card.kidnote) + '</p></div>';
+    }
+
+    html += '<button class="save" id="save">Keep on this phone' +
+      (card.expiry ? ' until ' + esc(card.expiry) : '') + '</button>' +
+      '<p style="color:var(--muted);font-size:13px;margin-top:10px">' +
+      'Until you tap that, this card only exists in the web address. Close the tab and it is gone.</p>';
+
+    root.innerHTML = html;
+
+    var key = storageKey(fragment);
+    var btn = document.getElementById('save');
+    try {
+      if (localStorage.getItem(key)) markSaved(btn);
+    } catch (e) { /* private window, storage blocked */ }
+
+    btn.addEventListener('click', function () {
+      try {
+        localStorage.setItem(key, JSON.stringify({ card: card, saved: Date.now() }));
+        markSaved(btn);
+      } catch (e) {
+        btn.textContent = 'This browser will not let me save';
+      }
+    });
+  }
+
+  function markSaved(btn) {
+    btn.textContent = 'Saved on this phone';
+    btn.classList.add('saved');
+  }
+
+  (async function () {
+    var fragment = location.hash.slice(1);
+    if (!fragment) {
+      root.innerHTML = '<h1 class="card-name">ReadyCard</h1>' +
+        '<p style="color:var(--muted)">This page shows a card that arrives in the web address. ' +
+        'There is nothing in the address, so there is nothing to show.</p>' +
+        '<p><a href="index.html">Make a code instead</a></p>';
+      return;
+    }
+    try {
+      var card = await Card.decodeFragment(fragment);
+      if (card.expiry && daysLeft(card.expiry) < 0) {
+        try { localStorage.removeItem(storageKey(fragment)); } catch (e) {}
+        renderExpired(card.expiry);
+        return;
+      }
+      render(card, fragment);
+    } catch (e) {
+      root.innerHTML = '<div class="alert"><h2>Could not read this code</h2><p>' +
+        esc(e.message) + '</p></div>';
+    }
+  })();
+})();
+</script>
+</body>
+</html>
