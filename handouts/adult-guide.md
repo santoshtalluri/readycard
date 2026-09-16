@@ -26,7 +26,7 @@ you can do, how to run a Sunday, and how to help without taking the work away.
       is noon Eastern on Oct 26, which is 9am here. Nobody should be relying on
       the morning of the 26th.
 
-Details are in `../ReadyCard-Rules-Compliance.md`.
+Details are in `../docs/ReadyCard-Rules-Compliance.md`.
 
 ## 2. Book the real-world test in week 3
 

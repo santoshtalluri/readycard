@@ -1,6 +1,8 @@
-# ReadyCard — the team handouts
+# ReadyCard — handouts
 
-One sheet per person. You only need to read your own, plus `setup-everyone.md`.
+Print these, or send each person their own link. One sheet each.
+
+You only need to read your own, plus `setup-everyone.md`.
 
 | File | Who reads it |
 |---|---|

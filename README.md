@@ -82,7 +82,7 @@ Builds the screen where a parent adds a child and types their information. Owns
 QR code or not — which is the single idea the whole project rests on, written as
 code. Also owns the character limits that stop a parent typing more than a code
 can hold, and the test that proves no private field ever reaches a code.
-→ [full brief](docs/team/nayan.md)
+→ [full brief](handouts/nayan.md)
 
 ### Hrithvik — the packing
 **Owns `pack.js`**
@@ -92,7 +92,7 @@ has it drawn as a QR code. Empty fields dropped, field names shortened to single
 letters, the result squashed. He works the whole problem out in Python first —
 which he already knows — and then translates it. He owns the number that answers
 "how much actually fits."
-→ [full brief](docs/team/hrithvik.md)
+→ [full brief](handouts/hrithvik.md)
 
 ### Manvik — the reader
 **Owns `v.html`**
@@ -101,7 +101,7 @@ Builds the page a coach sees after scanning. Reads the card out of the web
 address, shows it with the allergy large and red and the phone numbers tappable,
 and owns the Save button that keeps it working with no signal. Also owns expiry.
 His page is the one thing in the video that has to work.
-→ [full brief](docs/team/manvik.md)
+→ [full brief](handouts/manvik.md)
 
 ### Kushu — design and the story
 **Owns `style.css`**
@@ -110,7 +110,7 @@ Makes all of it look right on a phone held by someone in a hurry, outdoors. Owns
 the printed sticker, the demo video, and the written submission. Design is one of
 three scoring criteria, and judges only ever meet this project through the video —
 so this is the only part a judge actually experiences.
-→ [full brief](docs/team/kushu.md)
+→ [full brief](handouts/kushu.md)
 
 ---
 
@@ -122,7 +122,7 @@ so this is the only part a judge actually experiences.
 | [docs/ReadyCard-Product-Brief.md](docs/ReadyCard-Product-Brief.md) | The full spec — personas, user journeys, 36 scenarios, constraints, security, FAQ |
 | [docs/ReadyCard-Rules-Compliance.md](docs/ReadyCard-Rules-Compliance.md) | What the official 2026 rules actually say, and the five things that change our plan |
 | [docs/ReadyCard-Team-Plan.md](docs/ReadyCard-Team-Plan.md) | Who builds what, week by week |
-| [docs/team/](docs/team/) | One step-by-step sheet per person, plus a guide for the adult |
+| [handouts/](handouts/) | One step-by-step sheet per person, plus a guide for the adult |
 | [prototype/](prototype/) | The working prototype, and what it measured |
 
 **Start with the Product Brief.** Read Section 4 and Section 9 before writing any code.
